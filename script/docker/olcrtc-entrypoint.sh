@@ -56,6 +56,11 @@ video_tile_rs="${OLCRTC_VIDEO_TILE_RS:-0}"
 vp8_fps="${OLCRTC_VP8_FPS:-0}"
 vp8_batch="${OLCRTC_VP8_BATCH:-0}"
 
+sei_fps="${OLCRTC_SEI_FPS:-20}"
+sei_batch="${OLCRTC_SEI_BATCH:-1}"
+sei_frag="${OLCRTC_SEI_FRAG:-900}"
+sei_ack_ms="${OLCRTC_SEI_ACK_MS:-3000}"
+
 [ "$mode" = "srv" ] || die "server image defaults to OLCRTC_MODE=srv; got '$mode'"
 [ -n "$carrier" ] || die "set OLCRTC_CARRIER (e.g. telemost, jazz, wbstream)"
 [ -n "$transport" ] || die "set OLCRTC_TRANSPORT (e.g. datachannel, videochannel, seichannel, vp8channel)"
@@ -68,6 +73,10 @@ if [ -z "$room_id" ]; then
             room_id=$(/usr/local/bin/olcrtc -mode gen -carrier "$carrier" -dns "$dns_server" -amount 1 -data "$data_dir")
             [ -n "$room_id" ] || die "room generation failed for carrier '$carrier'"
             echo "olcrtc-entrypoint: generated room ID: $room_id" >&2
+            ;;
+        wbstream)
+            echo "olcrtc-entrypoint: OLCRTC_ROOM_ID not set, will auto-create or reuse saved room" >&2
+            room_id="any"
             ;;
         *)
             die "set OLCRTC_ROOM_ID to the room identifier"
@@ -127,6 +136,10 @@ fi
 
 if [ "$transport" = "vp8channel" ]; then
     set -- "$@" -vp8-fps "$vp8_fps" -vp8-batch "$vp8_batch"
+fi
+
+if [ "$transport" = "seichannel" ]; then
+    set -- "$@" -fps "$sei_fps" -batch "$sei_batch" -frag "$sei_frag" -ack-ms "$sei_ack_ms"
 fi
 
 if bool_flag "${OLCRTC_DEBUG:-}"; then

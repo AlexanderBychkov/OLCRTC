@@ -248,6 +248,12 @@ func (p *Peer) Connect(ctx context.Context) error {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
+		p.pingLoop(ctx)
+	}()
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
 		p.handleSignaling(ctx)
 	}()
 
@@ -609,6 +615,24 @@ func (p *Peer) updateWSDeadline() {
 		_ = p.ws.SetReadDeadline(time.Now().Add(60 * time.Second))
 	}
 	p.wsMu.Unlock()
+}
+
+func (p *Peer) pingLoop(ctx context.Context) {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			p.wsMu.Lock()
+			if p.ws != nil {
+				_ = p.ws.WriteMessage(websocket.PingMessage, nil)
+				_ = p.ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+			}
+			p.wsMu.Unlock()
+		}
+	}
 }
 
 // Send queues data for transmission.

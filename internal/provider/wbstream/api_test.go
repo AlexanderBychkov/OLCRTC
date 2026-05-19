@@ -63,7 +63,7 @@ func TestWBStreamAPIHappyPath(t *testing.T) {
 	if err := joinRoom(context.Background(), access, room); err != nil {
 		t.Fatalf("joinRoom() error = %v", err)
 	}
-	token, err := getToken(context.Background(), access, room, "peer")
+	token, _, err := getToken(context.Background(), access, room, "peer")
 	if err != nil {
 		t.Fatalf("getToken() error = %v", err)
 	}
@@ -86,7 +86,7 @@ func TestWBStreamAPIErrors(t *testing.T) {
 	if err := joinRoom(context.Background(), "access", "room"); !errors.Is(err, errJoinRoom) {
 		t.Fatalf("joinRoom() error = %v, want %v", err, errJoinRoom)
 	}
-	if _, err := getToken(context.Background(), "access", "room", "peer"); !errors.Is(err, errGetToken) {
+	if _, _, err := getToken(context.Background(), "access", "room", "peer"); !errors.Is(err, errGetToken) {
 		t.Fatalf("getToken() error = %v, want %v", err, errGetToken)
 	}
 }
@@ -112,7 +112,7 @@ func TestWBStreamGetRoomToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPeer() error = %v", err)
 	}
-	token, err := p.getRoomToken(context.Background())
+	token, _, err := p.getRoomToken(context.Background())
 	if err != nil {
 		t.Fatalf("getRoomToken() error = %v", err)
 	}

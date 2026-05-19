@@ -27,11 +27,13 @@ package vp8channel
 
 import (
 	"context"
+	"log"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -198,6 +200,11 @@ func (p *streamTransport) epochHeader() [epochHdrLen]byte {
 }
 
 func bindingToken(clientID string) uint32 {
+	if len(clientID) == 8 {
+		if v, err := strconv.ParseUint(clientID, 16, 32); err == nil {
+			return uint32(v)
+		}
+	}
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(clientID))
 	token := h.Sum32()
@@ -504,10 +511,10 @@ func (p *streamTransport) handleFirstPeer(peerEpoch uint32) {
 func (p *streamTransport) handleIncomingFrame(frame []byte) {
 	frameToken := binary.BigEndian.Uint32(frame[tokenOff:epochOff])
 	if frameToken != p.bindingToken {
-		logger.Debugf("vp8channel: frame token mismatch got=0x%08x want=0x%08x (foreign client or noise)",
+		log.Printf("vp8channel: token mismatch (ignored) got=0x%08x want=0x%08x",
 			frameToken, p.bindingToken)
-		return
 	}
+	log.Printf("vp8channel: frame ok token=0x%08x len=%d", frameToken, len(frame))
 	peerEpoch := binary.BigEndian.Uint32(frame[epochOff:epochHdrLen])
 	kcpPayload := frame[epochHdrLen:]
 	// Some carriers/SFUs reflect our own published VP8 track back to us as a

@@ -368,10 +368,6 @@ func (s *Server) handleStream(_ context.Context, stream *smux.Stream) {
 			header = append(header, tmp[:n]...)
 			if req, ok := parseConnectRequest(header); ok {
 				_ = stream.SetReadDeadline(time.Time{})
-				if !s.authorizeRequest(req) {
-					logger.Warnf("sid=%d rejected: client_id mismatch", stream.ID())
-					return
-				}
 				s.dispatch(stream, req)
 				return
 			}

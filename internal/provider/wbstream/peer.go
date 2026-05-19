@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -15,8 +17,11 @@ import (
 )
 
 const (
-	wsURL = "wss://rtc-el-01.wb.ru"
+	roomIDFile = "room_id"
 )
+
+var userToken = os.Getenv("OLCRTC_WB_USER_TOKEN") //nolint:gochecknoglobals
+
 
 var (
 	// ErrPeerClosed is returned when an operation is attempted on a closed peer.
@@ -61,7 +66,7 @@ func NewPeer(ctx context.Context, roomURL, name string, onData func([]byte)) (*P
 
 // Connect starts the WebRTC connection process.
 func (p *Peer) Connect(ctx context.Context) error {
-	token, err := p.getRoomToken(ctx)
+	token, serverURL, err := p.getRoomToken(ctx)
 	if err != nil {
 		return fmt.Errorf("get room token: %w", err)
 	}
@@ -94,7 +99,7 @@ func (p *Peer) Connect(ctx context.Context) error {
 	}
 
 	room, err := lksdk.ConnectToRoomWithToken(
-		wsURL,
+		serverURL,
 		token,
 		roomCB,
 		lksdk.WithAutoSubscribe(true),
@@ -129,32 +134,79 @@ func (p *Peer) publishPendingTracks() error {
 	return nil
 }
 
-func (p *Peer) getRoomToken(ctx context.Context) (string, error) {
+func (p *Peer) getRoomToken(ctx context.Context) (string, string, error) {
 	accessToken, err := registerGuest(ctx, p.name)
 	if err != nil {
-		return "", fmt.Errorf("register guest: %w", err)
+		return "", "", fmt.Errorf("register guest: %w", err)
 	}
 
 	roomID := p.roomURL
 	if roomID == "" || roomID == "any" {
-		roomID, err = createRoom(ctx, accessToken)
-		if err != nil {
-			return "", fmt.Errorf("create room: %w", err)
+		// Try persisted room ID first to survive restarts.
+		if saved := loadRoomID(); saved != "" {
+			checkToken := accessToken
+			if userToken != "" {
+				checkToken = userToken
+			}
+			if token, sURL, err := p.tryConnect(ctx, checkToken, saved); err == nil {
+				return token, sURL, nil
+			}
+			log.Printf("wbstream: saved room %s unavailable, creating new room", saved)
 		}
-		log.Printf("WB Stream room created: %s", roomID)
-		log.Printf("To connect client use: -id %s", roomID)
+		createToken := accessToken
+		if userToken != "" {
+			createToken = userToken
+		}
+		roomID, err = createRoom(ctx, createToken)
+		if err != nil {
+			return "", "", fmt.Errorf("create room: %w", err)
+		}
+		// Activate the room LiveKit session using the creator token.
+		if createToken != accessToken {
+			if err := joinRoom(ctx, createToken, roomID); err != nil {
+				log.Printf("wbstream: user join to activate room failed: %v", err)
+			}
+		}
+		if err := saveRoomID(roomID); err != nil {
+			log.Printf("wbstream: save room ID: %v", err)
+		}
+		log.Printf("wbstream: room created: %s", roomID)
+		log.Printf("wbstream: to connect client use: -id %s", roomID)
 	}
 
-	if err := joinRoom(ctx, accessToken, roomID); err != nil {
-		return "", fmt.Errorf("join room: %w", err)
+	connectToken := accessToken
+	if userToken != "" {
+		connectToken = userToken
 	}
-
-	token, err := getToken(ctx, accessToken, roomID, p.name)
+	if err := joinRoom(ctx, connectToken, roomID); err != nil {
+		return "", "", fmt.Errorf("join room: %w", err)
+	}
+	token, sURL, err := getToken(ctx, connectToken, roomID, p.name)
 	if err != nil {
-		return "", fmt.Errorf("get token: %w", err)
+		return "", "", fmt.Errorf("get token: %w", err)
 	}
+	return token, sURL, nil
+}
 
-	return token, nil
+// tryConnect attempts to join an existing room and get a token.
+// Returns error if the room is gone or unreachable.
+func (p *Peer) tryConnect(ctx context.Context, accessToken, roomID string) (string, string, error) {
+	if err := joinRoom(ctx, accessToken, roomID); err != nil {
+		return "", "", err
+	}
+	return getToken(ctx, accessToken, roomID, p.name)
+}
+
+func loadRoomID() string {
+	data, err := os.ReadFile(roomIDFile)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(data))
+}
+
+func saveRoomID(roomID string) error {
+	return os.WriteFile(roomIDFile, []byte(roomID), 0o600)
 }
 
 func (p *Peer) processSendQueue() {

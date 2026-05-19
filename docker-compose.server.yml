@@ -1,12 +1,12 @@
 services:
   olcrtc-server:
-    build:
-      context: .
     image: olcrtc/server:local
     container_name: olcrtc-server
     restart: unless-stopped
     environment:
-      OLCRTC_CARRIER: "${OLCRTC_CARRIER:?set OLCRTC_CARRIER (telemost, jazz, wbstream)}"
+      OLCRTC_CARRIER: "${OLCRTC_CARRIER:?set OLCRTC_CARRIER}"
+      OLCRTC_TRANSPORT: "${OLCRTC_TRANSPORT:?set OLCRTC_TRANSPORT}"
+      OLCRTC_CLIENT_ID: "${OLCRTC_CLIENT_ID:?set OLCRTC_CLIENT_ID}"
       OLCRTC_ROOM_ID: "${OLCRTC_ROOM_ID:-}"
       OLCRTC_KEY: "${OLCRTC_KEY:-}"
       OLCRTC_DNS: "${OLCRTC_DNS:-1.1.1.1:53}"
